@@ -809,6 +809,8 @@ def supports_full_source_computation(decomp_data: dict) -> Tuple[bool, str]:
     ]
     if missing:
         return False, f"Missing keys: {missing}."
+    if decomp_data.get("data") is None:
+        return False, "data is None."
     if decomp_data.get("mu_filters") is None:
         return False, "mu_filters is None."
     return True, ""

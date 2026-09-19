@@ -7,6 +7,7 @@ is shown as a shaded band on the source plot.
 """
 
 import logging
+import warnings
 from typing import Optional, List, Dict, Tuple
 from pathlib import Path
 import pickle
@@ -1388,10 +1389,21 @@ class EditionTab(QWidget):
             QMessageBox.critical(self, "Load Error", f"File not found:\n{path}")
             return
         try:
-            data = load_decomposition_file(path)
+            with warnings.catch_warnings(record=True) as warnings_while_loading:
+                warnings.simplefilter("always")
+                data = load_decomposition_file(path)
         except Exception as e:
             QMessageBox.critical(self, "Load Error", f"Failed to read file:\n{e}")
             return
+
+        # Pop-up messages to inform about warnings caught while loading:
+        for warning in warnings_while_loading:
+            QMessageBox.warning(
+                self,
+                "Format Error",
+                str(warning.message)
+            )
+
         if "ports" not in data or "discharge_times" not in data:
             QMessageBox.warning(
                 self,

@@ -7,6 +7,7 @@ import pickle
 import re
 from pathlib import Path
 from typing import Any
+import warnings
 
 import numpy as np
 
@@ -20,10 +21,11 @@ _SCD_TIMESTAMP_KEYS = ("timestamps", "MUPulses")
 _SCD_SOURCE_KEYS = ("source", "sources")
 _SCD_METRIC_KEYS = ("silhouettes", "RoA", "fr", "cov", "best_exp")
 
-
 class UnsupportedDecompositionFormat(ValueError):
     """Raised when a pickle is neither an SCD Edition file nor raw SCD output."""
 
+class UnsupportedDecompositionFormatWarning(UserWarning):
+    """Raised when a decomposition value is not supported but can be replaced with default values."""
 
 def detect_decomposition_format(data: Any) -> str:
     """Return the supported format name for an unpickled object."""
@@ -137,6 +139,66 @@ def convert_scd_output(data: dict, source_path: Path | None = None) -> dict:
             "The SCD sampling frequency must be positive."
         )
 
+    # Plateau coordinates (start and end times for the decomposed signal segment, in samples)
+    start_time = preprocessing_config.get("start_time", None)
+    end_time = preprocessing_config.get("end_time", None)
+    if (start_time is None) or (end_time is None):
+        start_time = 0
+        end_time = -1
+        warnings.warn(
+            "The SCD result did not record start or end time; start is set to 0, end to -1.",
+            UnsupportedDecompositionFormatWarning)
+
+    # - Convert to float, then samples
+    try:
+        start_time = float(start_time)
+    except (TypeError, ValueError):
+        start_time = 0.0
+        warnings.warn(
+            "The SCD result does not record a valid start time; start is set to 0.",
+            UnsupportedDecompositionFormatWarning)
+    try:
+        end_time = float(end_time)
+    except (TypeError, ValueError):
+        end_time = -1.0
+        warnings.warn(
+            "The SCD result does not record a valid end time; end is set to -1.",
+            UnsupportedDecompositionFormatWarning)
+
+    plateau_coords = np.round(np.array([start_time, end_time]) * sampling_rate).astype(int)
+
+    # - Force within valid decomposed signal length (as recorded by sources)
+    if plateau_coords[0] < 0:
+        plateau_coords[0] = 0
+        warnings.warn(
+            "The SCD result does not record a valid start time; start is set to 0.",
+            UnsupportedDecompositionFormatWarning)
+    elif plateau_coords[0] > source_length:
+        plateau_coords[0] = 0
+        warnings.warn(
+            "The SCD result records a start time past the existing sources; start is set to 0.",
+            UnsupportedDecompositionFormatWarning)
+
+    if plateau_coords[1] < 0:
+        plateau_coords[1] = source_length
+    elif plateau_coords[1] > source_length:
+        plateau_coords[1] = source_length
+        warnings.warn(
+            "The SCD result records an end time past the existing sources; end is set to the maximum length recorded by sources.",
+            UnsupportedDecompositionFormatWarning)
+
+    if plateau_coords[0] == plateau_coords[1]:
+        plateau_coords[0] = 0
+        plateau_coords[1] = source_length
+        warnings.warn(
+            "The SCD result records the same start and end time; re-setting to full length recorded by sources.",
+            UnsupportedDecompositionFormatWarning)
+    elif plateau_coords[0] > plateau_coords[1]:
+        plateau_coords = plateau_coords[[1, 0]]
+        warnings.warn(
+            "The SCD result records start time later than end time; times are reversed.",
+            UnsupportedDecompositionFormatWarning)
+
     w_mat_raw = data.get("w_mat")
     w_mat = to_numpy(w_mat_raw) if w_mat_raw is not None else None
     if w_mat is not None and w_mat.size == 0:
@@ -156,8 +218,18 @@ def convert_scd_output(data: dict, source_path: Path | None = None) -> dict:
         key: _portable_value(data[key]) for key in _SCD_METRIC_KEYS if key in data
     }
 
+    # Data given as input to swarm-contrastive-decomposition pipeline (optional)
+    emg = data.get("data", None)
+    if emg is not None:
+        # Format to numpy array (channels x samples)
+        emg_formatted = to_numpy(emg)
+        if emg_formatted.ndim == 2 and emg_formatted.shape[0] > emg_formatted.shape[1]:
+            emg_formatted = emg_formatted.T
+        emg = emg_formatted  # and refresh
+
     return {
         "version": 1.1,
+        "data": emg,
         "ports": [port_name],
         "sampling_rate": sampling_rate,
         "discharge_times": [timestamps],
@@ -166,7 +238,7 @@ def convert_scd_output(data: dict, source_path: Path | None = None) -> dict:
         "w_mat": [w_mat],
         "peel_off_sequence": [_portable_value(data.get("peel_off_sequence", []))],
         "preprocessing_config": [_portable_value(preprocessing_config)],
-        "plateau_coords": [0, source_length],
+        "plateau_coords": plateau_coords.tolist(),
         "chans_per_electrode": [n_channels],
         "channel_indices": [list(range(n_channels))],
         "emg_mask": [[0] * n_channels],
@@ -177,6 +249,7 @@ def convert_scd_output(data: dict, source_path: Path | None = None) -> dict:
         "acquisition_metadata": {"format": "scd-output"},
         "import_provenance": provenance,
         "scd_metadata": scd_metadata,
+        "skip_filter_recalc": False
     }
 
 
