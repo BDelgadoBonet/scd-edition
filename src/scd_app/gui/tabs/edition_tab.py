@@ -962,23 +962,25 @@ class EditionTab(QWidget):
     def _split_preview_active(self) -> bool:
         return self._split_preview_key is not None
 
+    def _get_current_split_suggestion(self) -> SplitSuggestion:
+        suggestion = SplitSuggestion(
+            group_a=None,
+            group_b=np.array(list(self._split_group_b)),
+            threshold=self._split_suggestion_threshold,
+            separation_score=self._split_suggestion_score,
+            method="manual" if self._split_preview_manually_adjusted else "",
+        )
+        return suggestion
+
     def _toggle_split_preview(self):
         """Start a split preview, or discard the active preview unchanged."""
         if self._split_preview_active():
-            suggestion = SplitSuggestion(
-                group_a=None,
-                group_b=np.array(list(self._split_group_b)),
-                threshold=self._split_suggestion_threshold,
-                separation_score=self._split_suggestion_score,
-                lower_mean_height=None,
-                upper_mean_height=None,
-            )
             self._push_undo(
                 UndoAction(
                     "Cancel split preview",
                     self._current_port or "",
                     self._current_mu_idx,
-                    old_split_suggestion=suggestion,
+                    new_split_suggestion=self._get_current_split_suggestion(),
                     data_changed=False,
                 )
             )
@@ -1123,12 +1125,12 @@ class EditionTab(QWidget):
                 logger.debug("Split MUAP preview unavailable: %s", exc)
         self._plot_muap()
 
-    def _toggle_split_spike(self, sample: int):
+    def _toggle_split_spike(self, sample: int | None, is_undo: bool = False):
         preview_key = self._split_preview_key
         if preview_key is None:
             return
         mu = self._get_mu(*preview_key)
-        if mu is None or int(sample) not in mu.timestamps:
+        if mu is None or sample is None or int(sample) not in mu.timestamps:
             return
         sample = int(sample)
         if sample in self._split_group_b:
@@ -1137,6 +1139,16 @@ class EditionTab(QWidget):
             self._split_group_b.add(sample)
         self._split_preview_manually_adjusted = True
         self._render_split_preview()
+        if not is_undo:
+            self._push_undo(
+                UndoAction(
+                    "Toggle split spike",
+                    self._current_port or "",
+                    self._current_mu_idx,
+                    new_split_sample=sample,
+                    data_changed=False,
+                )
+            )
 
     def _apply_selection_split(self, x1: float, x2: float, y1: float, y2: float):
         preview_key = self._split_preview_key
@@ -1157,6 +1169,13 @@ class EditionTab(QWidget):
         if not selected:
             self._update_status("No spike markers in split selection")
             return
+        self._toggle_split_selection(selected)
+
+    def _toggle_split_selection(
+        self, selected: list[int] | None, is_undo: bool = False
+    ):
+        if selected is None:
+            return
         for timestamp in selected:
             if timestamp in self._split_group_b:
                 self._split_group_b.remove(timestamp)
@@ -1164,6 +1183,16 @@ class EditionTab(QWidget):
                 self._split_group_b.add(timestamp)
         self._split_preview_manually_adjusted = True
         self._render_split_preview()
+        if not is_undo:
+            self._push_undo(
+                UndoAction(
+                    "Toggle split selection",
+                    self._current_port or "",
+                    self._current_mu_idx,
+                    new_split_selection=selected,
+                    data_changed=False,
+                )
+            )
 
     def _cancel_split_preview(self, *, announce: bool = True):
         if not self._split_preview_active():
@@ -2620,7 +2649,11 @@ class EditionTab(QWidget):
             elif (
                 action.description == "Cancel split preview"
             ):  # -> recover previous split preview
-                self._start_split_preview(suggestion=action.old_split_suggestion)
+                self._start_split_preview(suggestion=action.new_split_suggestion)
+            elif action.description == "Toggle split spike":
+                self._toggle_split_spike(action.new_split_sample, is_undo=True)
+            elif action.description == "Toggle split selection":
+                self._toggle_split_selection(action.new_split_selection, is_undo=True)
         else:
             if action.new_timestamps is not None:
                 mu.timestamps = action.new_timestamps
@@ -2631,11 +2664,15 @@ class EditionTab(QWidget):
             if (
                 action.description == "Start split preview"
             ):  # -> recover previous split preview
-                self._start_split_preview(suggestion=action.old_split_suggestion)
+                self._start_split_preview(suggestion=action.new_split_suggestion)
             elif (
                 action.description == "Cancel split preview"
             ):  # -> discard split preview unchanged
                 self._cancel_split_preview()
+            elif action.description == "Toggle split spike":
+                self._toggle_split_spike(action.new_split_sample)
+            elif action.description == "Toggle split selection":
+                self._toggle_split_selection(action.new_split_selection)
 
     # ------------------------------------------------------------------
     # Filter recalculation

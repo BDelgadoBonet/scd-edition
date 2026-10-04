@@ -68,5 +68,7 @@ class UndoAction:
     old_filter: np.ndarray | None = None
     new_source: np.ndarray | None = None
     new_filter: np.ndarray | None = None
-    old_split_suggestion: SplitSuggestion | None = None
+    new_split_sample: int | None = None
+    new_split_selection: list[int] | None = None
+    new_split_suggestion: SplitSuggestion | None = None
     data_changed: bool = False
