@@ -11,12 +11,12 @@ import numpy as np
 class SplitSuggestion:
     """A complete two-way timestamp partition proposed from source peak heights."""
 
-    group_a: np.ndarray
+    group_a: np.ndarray | None
     group_b: np.ndarray
-    threshold: float
-    separation_score: float
-    lower_mean_height: float
-    upper_mean_height: float
+    threshold: float | None
+    separation_score: float | None
+    lower_mean_height: float | None
+    upper_mean_height: float | None
 
 
 def suggest_split_by_peak_height(

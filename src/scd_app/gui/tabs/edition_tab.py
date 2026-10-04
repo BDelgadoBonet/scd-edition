@@ -71,7 +71,10 @@ from scd_app.core.spike_muap import (
     inspect_spike_muap,
     split_preview_muaps,
 )
-from scd_app.core.unit_splitting import suggest_split_by_peak_height
+from scd_app.core.unit_splitting import (
+    SplitSuggestion,
+    suggest_split_by_peak_height,
+)
 from scd_app.core.utils import to_numpy
 from scd_app.gui.style.styling import (
     COLORS,
@@ -962,15 +965,24 @@ class EditionTab(QWidget):
     def _toggle_split_preview(self):
         """Start a split preview, or discard the active preview unchanged."""
         if self._split_preview_active():
-            self._cancel_split_preview()
+            suggestion = SplitSuggestion(
+                group_a=None,
+                group_b=np.array(list(self._split_group_b)),
+                threshold=self._split_suggestion_threshold,
+                separation_score=self._split_suggestion_score,
+                lower_mean_height=None,
+                upper_mean_height=None,
+            )
             self._push_undo(
                 UndoAction(
                     "Cancel split preview",
                     self._current_port or "",
                     self._current_mu_idx,
+                    old_split_suggestion=suggestion,
                     data_changed=False,
                 )
             )
+            self._cancel_split_preview()
         else:
             self._start_split_preview()
             self._push_undo(
@@ -982,7 +994,7 @@ class EditionTab(QWidget):
                 )
             )
 
-    def _start_split_preview(self):
+    def _start_split_preview(self, suggestion: SplitSuggestion | None = None):
         mu = self._current_mu()
         if mu is None:
             self._update_status("Select a motor unit first")
@@ -999,7 +1011,9 @@ class EditionTab(QWidget):
         self._set_mode(EditMode.VIEW)
         self._split_preview_key = (self._current_port or "", self._current_mu_idx)
         try:
-            suggestion = suggest_split_by_peak_height(timestamps, mu.source)
+            suggestion = suggestion or suggest_split_by_peak_height(
+                timestamps, mu.source
+            )
             self._split_group_b = set(suggestion.group_b.tolist())
             self._split_suggestion_score = suggestion.separation_score
             self._split_suggestion_threshold = suggestion.threshold
@@ -2606,7 +2620,7 @@ class EditionTab(QWidget):
             elif (
                 action.description == "Cancel split preview"
             ):  # -> recover previous split preview
-                self._start_split_preview()
+                self._start_split_preview(suggestion=action.old_split_suggestion)
         else:
             if action.new_timestamps is not None:
                 mu.timestamps = action.new_timestamps
@@ -2617,7 +2631,7 @@ class EditionTab(QWidget):
             if (
                 action.description == "Start split preview"
             ):  # -> recover previous split preview
-                self._start_split_preview()
+                self._start_split_preview(suggestion=action.old_split_suggestion)
             elif (
                 action.description == "Cancel split preview"
             ):  # -> discard split preview unchanged
