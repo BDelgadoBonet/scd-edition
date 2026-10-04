@@ -67,3 +67,4 @@ class UndoAction:
     old_filter: np.ndarray | None = None
     new_source: np.ndarray | None = None
     new_filter: np.ndarray | None = None
+    data_changed: bool = False

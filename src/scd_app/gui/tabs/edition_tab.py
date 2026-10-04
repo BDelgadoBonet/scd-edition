@@ -910,6 +910,7 @@ class EditionTab(QWidget):
                 self._current_mu_idx,
                 old_ts,
                 new_ts,
+                data_changed=True,
             )
         )
         mu.timestamps = new_ts
@@ -945,6 +946,7 @@ class EditionTab(QWidget):
                 self._current_mu_idx,
                 old_ts,
                 new_ts,
+                data_changed=True,
             )
         )
         mu.timestamps = new_ts
@@ -961,8 +963,24 @@ class EditionTab(QWidget):
         """Start a split preview, or discard the active preview unchanged."""
         if self._split_preview_active():
             self._cancel_split_preview()
+            self._push_undo(
+                UndoAction(
+                    "Cancel split preview",
+                    self._current_port or "",
+                    self._current_mu_idx,
+                    data_changed=False,
+                )
+            )
         else:
             self._start_split_preview()
+            self._push_undo(
+                UndoAction(
+                    "Start split preview",
+                    self._current_port or "",
+                    self._current_mu_idx,
+                    data_changed=False,
+                )
+            )
 
     def _start_split_preview(self):
         mu = self._current_mu()
@@ -2392,6 +2410,7 @@ class EditionTab(QWidget):
                 self._current_mu_idx,
                 old_ts,
                 new_ts,
+                data_changed=True,
             )
         )
         mu.timestamps = new_ts
@@ -2423,6 +2442,7 @@ class EditionTab(QWidget):
                 self._current_mu_idx,
                 old_ts,
                 new_ts,
+                data_changed=True,
             )
         )
         mu.timestamps = new_ts
@@ -2538,10 +2558,13 @@ class EditionTab(QWidget):
         self._redo_stack.setdefault(key, []).append(action)
         self._log_edit("undo", action)
         self._apply_undo_redo(action, is_undo=True)
-        self._on_data_changed(
-            f"Undo: {action.description}",
-            source_changed=action.old_source is not None,
-        )
+        if action.data_changed:
+            self._on_data_changed(
+                f"Undo: {action.description}",
+                source_changed=action.old_source is not None,
+            )
+        else:
+            self._update_status(f"Undo: {action.description}")
 
     def _redo(self):
         key = (self._current_port or "", self._current_mu_idx)
@@ -2553,10 +2576,13 @@ class EditionTab(QWidget):
         self._undo_stack.setdefault(key, []).append(action)
         self._log_edit("redo", action)
         self._apply_undo_redo(action, is_undo=False)
-        self._on_data_changed(
-            f"Redo: {action.description}",
-            source_changed=action.new_source is not None,
-        )
+        if action.data_changed:
+            self._on_data_changed(
+                f"Redo: {action.description}",
+                source_changed=action.new_source is not None,
+            )
+        else:
+            self._update_status(f"Redo: {action.description}")
 
     def _apply_undo_redo(self, action: UndoAction, is_undo: bool):
         if self._current_port != action.port_name:
@@ -2573,6 +2599,14 @@ class EditionTab(QWidget):
                 mu.source = action.old_source
             if action.old_filter is not None:
                 mu.mu_filter = action.old_filter
+            if (
+                action.description == "Start split preview"
+            ):  # -> discard split preview unchanged
+                self._cancel_split_preview()
+            elif (
+                action.description == "Cancel split preview"
+            ):  # -> recover previous split preview
+                self._start_split_preview()
         else:
             if action.new_timestamps is not None:
                 mu.timestamps = action.new_timestamps
@@ -2580,6 +2614,14 @@ class EditionTab(QWidget):
                 mu.source = action.new_source
             if action.new_filter is not None:
                 mu.mu_filter = action.new_filter
+            if (
+                action.description == "Start split preview"
+            ):  # -> recover previous split preview
+                self._start_split_preview()
+            elif (
+                action.description == "Cancel split preview"
+            ):  # -> discard split preview unchanged
+                self._cancel_split_preview()
 
     # ------------------------------------------------------------------
     # Filter recalculation
@@ -2671,6 +2713,7 @@ class EditionTab(QWidget):
                     old_filter=old_filter,
                     new_source=new_source,
                     new_filter=new_filter,
+                    data_changed=True,
                 )
             )
             self._on_data_changed(
@@ -3159,6 +3202,7 @@ class EditionTab(QWidget):
                 self._current_mu_idx,
                 old_ts,
                 new_ts,
+                data_changed=True,
             )
         )
         mu.timestamps = new_ts
@@ -3203,6 +3247,7 @@ class EditionTab(QWidget):
                 self._current_mu_idx,
                 old_ts,
                 result.new_timestamps,
+                data_changed=True,
             )
         )
         mu.timestamps = result.new_timestamps
