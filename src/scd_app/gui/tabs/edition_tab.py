@@ -503,7 +503,7 @@ class EditionTab(QWidget):
 
         self.btn_notes = QPushButton("📝 Notes")
         self.btn_notes.setToolTip(
-            "Open file notes; new entries are tagged with the current port and unit"
+            "Open file notes to add post-its [P]; new entries are tagged with the current port and unit"
         )
         self.btn_notes.clicked.connect(self._open_notes_dialog)
         self.btn_notes.setEnabled(False)
@@ -789,6 +789,7 @@ class EditionTab(QWidget):
         QShortcut(QKeySequence("Shift+T"), self, self._reset_reliability)
         QShortcut(QKeySequence("["), self, lambda: self._navigate_inspected_spike(-1))
         QShortcut(QKeySequence("]"), self, lambda: self._navigate_inspected_spike(1))
+        QShortcut(QKeySequence("P"), self, self.btn_notes.click)
 
     def _pan_source(self, fraction: float):
         """Pan the source plot by `fraction` of the current visible width."""
