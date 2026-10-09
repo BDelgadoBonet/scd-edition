@@ -962,7 +962,7 @@ class EditionTab(QWidget):
     def _split_preview_active(self) -> bool:
         return self._split_preview_key is not None
 
-    def _get_current_split_suggestion(self) -> SplitSuggestion:
+    def _current_split_suggestion(self) -> SplitSuggestion:
         suggestion = SplitSuggestion(
             group_a=None,
             group_b=np.array(list(self._split_group_b)),
@@ -980,7 +980,7 @@ class EditionTab(QWidget):
                     "Cancel split preview",
                     self._current_port or "",
                     self._current_mu_idx,
-                    new_split_suggestion=self._get_current_split_suggestion(),
+                    new_split_suggestion=self._current_split_suggestion(),
                     data_changed=False,
                 )
             )
@@ -1125,7 +1125,9 @@ class EditionTab(QWidget):
                 logger.debug("Split MUAP preview unavailable: %s", exc)
         self._plot_muap()
 
-    def _toggle_split_spike(self, sample: int | None, is_undo: bool = False):
+    def _toggle_split_spike(
+        self, sample: int | None, is_undo: bool = False, is_redo: bool = False
+    ):
         preview_key = self._split_preview_key
         if preview_key is None:
             return
@@ -1139,7 +1141,7 @@ class EditionTab(QWidget):
             self._split_group_b.add(sample)
         self._split_preview_manually_adjusted = True
         self._render_split_preview()
-        if not is_undo:
+        if not is_undo and not is_redo:
             self._push_undo(
                 UndoAction(
                     "Toggle split spike",
@@ -1172,7 +1174,7 @@ class EditionTab(QWidget):
         self._toggle_split_selection(selected)
 
     def _toggle_split_selection(
-        self, selected: list[int] | None, is_undo: bool = False
+        self, selected: list[int] | None, is_undo: bool = False, is_redo: bool = False
     ):
         if selected is None:
             return
@@ -1183,7 +1185,7 @@ class EditionTab(QWidget):
                 self._split_group_b.add(timestamp)
         self._split_preview_manually_adjusted = True
         self._render_split_preview()
-        if not is_undo:
+        if not is_undo and not is_redo:
             self._push_undo(
                 UndoAction(
                     "Toggle split selection",
@@ -2670,9 +2672,9 @@ class EditionTab(QWidget):
             ):  # -> discard split preview unchanged
                 self._cancel_split_preview()
             elif action.description == "Toggle split spike":
-                self._toggle_split_spike(action.new_split_sample)
+                self._toggle_split_spike(action.new_split_sample, is_redo=True)
             elif action.description == "Toggle split selection":
-                self._toggle_split_selection(action.new_split_selection)
+                self._toggle_split_selection(action.new_split_selection, is_redo=True)
 
     # ------------------------------------------------------------------
     # Filter recalculation
@@ -3800,7 +3802,7 @@ class EditionTab(QWidget):
         else:
             self.btn_notes.setText("📝 Notes")
             self.btn_notes.setToolTip(
-                "Open file notes; new entries are tagged with the current port and unit"
+                "Open file notes to add post-its [P]; new entries are tagged with the current port and unit"
             )
         self.btn_notes.setStyleSheet(self._notes_btn_style(bool(unit_notes)))
 
